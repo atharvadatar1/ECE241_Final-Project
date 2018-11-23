@@ -1,0 +1,322 @@
+`timescale 1ns / 1ns
+
+// top level module where the control and datapath are connected
+module screenState(clk, gameStart, X, Y, C, WriteEn, countReset);
+
+	input clk, gameStart, countReset;
+	output [7:0] X;
+	output [6:0] Y;
+	output [2:0] C;
+	output WriteEn;
+	
+	wire [7:0] max_x, max_y, Y_out, DK_address;
+	wire plot1, plot2, plot3, draw_en, cnt_enable, enable_DK;
+	wire [14:0] max_cnt, clk_cnt;
+
+	assign max_cnt = max_x*max_y;		// can we simply do multiplication like this??
+	assign WriteEn = draw_en;
+	assign Y = Y_out[6:0];
+	
+	control ss1(.clk(clk), .gameStart(gameStart), .x_count(max_x), .y_count(max_y),
+						.clk_count_enable(cnt_enable), .clk_count(clk_cnt), .plot_start(plot1), 
+						.plot_game_initial(plot2), .plot_DK(plot3), .DK_enable(enable_DK), .draw(draw_en));
+						
+	datapath ss2(.clk(clk), .x_count(max_x), .y_count(max_y), .plot_start(plot1),
+						.resetCounter(countReset), .plot_game_initial(plot2), .plot_DK(plot3), .draw(draw_en), 
+						.address_DK(DK_address), .X_r(X), .Y_r(Y_out), .C_r(C));
+						
+	clk_counter ss3(.clk(clk), .resetn(countReset), .enable(cnt_enable), 
+							.max_count(max_cnt), .count(clk_cnt));
+							
+	address_counter_DK ss4(.clk(clk), .resetn(countReset), .enable(enable_DK), 
+									.address_DK(DK_address));
+							
+endmodule
+
+module control(clk, gameStart, x_count, y_count, clk_count_enable, plot_start, 
+						clk_count, plot_game_initial, plot_DK, DK_enable, draw);
+
+	input clk, gameStart;
+	input [14:0] clk_count;
+	output reg [7:0] x_count, y_count;
+	output reg plot_start, plot_game_initial, plot_DK, draw, clk_count_enable, DK_enable;
+	
+
+	reg [3:0] current_state, next_state;
+	
+	// these parameters are for the state diagram
+	localparam 	START_SCREEN			= 4'd0,
+				   GAME_SCREEN_INITIAL	= 4'd1,
+					GAME_SCREEN_WAIT		= 4'd2,
+					DRAW_DK					= 4'd3,
+					DRAW_DK_WAIT			= 4'd4;
+	
+	// these parameters define the size of the pixels that need to be replaced in x and y	
+	localparam 	WINDOW_SZ_X 				= 8'd160,
+					WINDOW_SZ_Y					= 8'd120,
+					WINDOW_PIX					= 15'd4,
+					DK_SZ							= 5'd16,
+					DK_PIX						= 8'd3;
+					
+	// state table
+	always@(*)
+	begin
+	
+		case(current_state)
+			
+				START_SCREEN: 	begin
+				
+										if (gameStart == 1'b1)
+											next_state = GAME_SCREEN_INITIAL;
+										else //(gameStart == 1'b0)
+											next_state = START_SCREEN;
+											
+									end
+				GAME_SCREEN_INITIAL: begin
+				
+												if ((gameStart == 1'b1)&(clk_count == WINDOW_PIX))
+													next_state = GAME_SCREEN_WAIT;
+												else 
+													next_state = GAME_SCREEN_INITIAL;
+											end
+				GAME_SCREEN_WAIT:	begin
+										
+											if (gameStart == 1'b1)
+												next_state = DRAW_DK;
+											else
+												next_state = START_SCREEN;
+										end
+				DRAW_DK:	begin
+				
+								if ((gameStart == 1'b1)&(clk_count == DK_PIX))
+									next_state = DRAW_DK_WAIT;
+								else 
+									next_state = DRAW_DK;
+							end
+				DRAW_DK_WAIT:	begin
+										if (gameStart == 1'b1)
+											next_state = DRAW_DK_WAIT;
+										else
+											next_state = START_SCREEN;
+									end
+										
+				default: next_state = START_SCREEN;
+		endcase
+	end
+	
+	always@(*)
+	begin
+		
+		// all signals are initialised to 0
+		x_count = 8'b0;
+		y_count = 8'b0;
+		plot_start = 1'b0;
+		plot_game_initial = 1'b0;
+		plot_DK = 1'b0;
+		DK_enable = 1'b0;
+		clk_count_enable = 1'b0;
+		draw = 1'b0;
+		
+		case(current_state)
+			
+				START_SCREEN: 	begin
+										x_count = WINDOW_SZ_X;
+										y_count = WINDOW_SZ_Y;
+										plot_start = 1'b1;
+										plot_game_initial = 1'b0;
+										draw = 1'b1;
+									end
+									
+				GAME_SCREEN_INITIAL: begin
+												x_count = WINDOW_SZ_X;
+												y_count = WINDOW_SZ_Y;
+												plot_start = 1'b0;
+												plot_game_initial = 1'b1;
+												draw = 1'b1;
+												clk_count_enable = 1'b1;
+											end
+											
+				GAME_SCREEN_WAIT:	begin
+											x_count = WINDOW_SZ_X;
+											y_count = WINDOW_SZ_Y;
+											plot_start = 1'b0;
+											plot_game_initial = 1'b0;
+											draw = 1'b0;
+											clk_count_enable = 1'b0;
+										end
+										
+				DRAW_DK:	begin
+								x_count = DK_SZ;
+								y_count = DK_SZ;
+								plot_start = 1'b0;
+								plot_game_initial = 1'b0;
+								plot_DK = 1'b1;
+								DK_enable = 1'b1;
+								draw = 1'b1;
+								clk_count_enable = 1'b0;
+							end
+							
+				DRAW_DK_WAIT:	begin
+										x_count =DK_SZ;
+										y_count = DK_SZ;
+										plot_start = 1'b0;
+										plot_game_initial = 1'b0;
+										plot_DK = 1'b0;
+										DK_enable = 1'b0;
+										draw = 1'b0;
+										clk_count_enable = 1'b0;
+									end						
+		endcase
+	end
+	
+	always@(posedge clk)
+	begin
+		if (gameStart == 1'b0)
+			current_state = START_SCREEN;
+		else
+			current_state = next_state;
+	end
+	
+endmodule
+
+module datapath(clk, x_count, y_count, resetCounter, plot_start, plot_game_initial, plot_DK, draw,
+						address_DK, X_r, Y_r, C_r);
+
+	input clk, resetCounter;
+	input [7:0] x_count, y_count, address_DK;
+	input plot_start, plot_game_initial, plot_DK, draw;
+	output reg [7:0] X_r, Y_r;
+	output reg [2:0] C_r;
+	
+	reg [7:0] X, Y, count_x, count_y;
+	reg [2:0] C;
+// instantiate the ram modules as well as the vga address converter module in this. 
+// declare wires and use them to connect the outpiut of the VGA address convereter
+// to the input of the ram modules
+// the take the output of the ram module as the colour that is to be drawn at that 
+// particular x and y value and output this from the top level module
+
+	// these tranfer the memory address
+	wire [15:0] ordinateToAddress;
+	assign ordinateToAddress = ({1'b0, Y_r[6:0], 7'd0} + {1'b0, Y_r[6:0], 5'd0} + {1'b0, X_r});
+	wire [14:0] VGAtoRAM1;
+	assign VGAtoRAM1 = ordinateToAddress[14:0];		
+	
+	wire [2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput3;					// these transfer the colou6r
+	
+	//vga_address_translator v1(.x(X), .y(Y), .mem_address(VGAtoRAM1));
+	// dont know if one more instantiation of this is needed, i think not
+	//vga_address_translator v2()
+	
+	ram19200x3_game_screen_final g1(.address(VGAtoRAM1), .clock(clk),
+													.data(3'b0), .wren(1'b0), .q(RAMtoOutput2));
+													
+	ram19200x3 g2(.address(VGAtoRAM1), .clock(clk), .data(3'b0), .wren(1'b0), 
+							.q(RAMtoOutput1));
+							
+	ram225x3_DK g3(.address(address_DK), .clock(clk), .data(3'b0), .wren(1'b0), .q(RAMtoOutput3));
+													
+	always@(posedge clk)
+	begin
+		if (resetCounter == 1'b1)
+		begin
+			count_x <= 1'b0;
+			count_y <= 1'b0;
+			X_r <= 8'b0;
+			Y_r <= 8'b0;
+		end
+		
+		else
+		begin
+			if ((plot_start == 1'b1) & (draw == 1'b1))
+			begin
+				X <= 8'b0;
+				Y <= 8'b0;
+				C <= RAMtoOutput1;
+				X_r <= X;
+				Y_r <= Y;
+				C_r <= C;
+			end
+			
+			else if ((plot_game_initial == 1'b1) & (draw == 1'b1))
+			begin
+				X <= 8'b0;
+				Y <= 8'b0;
+				C <= RAMtoOutput2;
+				X_r <= X;
+				Y_r <= Y;
+				C_r <= C;
+			end
+			
+			else if ((plot_DK == 1'b1) & (draw == 1'b1))
+			begin
+				X <= 8'd13;
+				Y <= 8'd3;
+				C <= RAMtoOutput3;
+				X_r <= X;
+				Y_r <= Y;
+				C_r <= C;
+			end
+			
+			if ((count_x == (x_count - 1'b1)) & (x_count > 8'd0))
+			begin
+				count_x <= 8'd0;
+				count_y <= count_y + 1'b1;
+			end
+			
+			else if (x_count >= 8'd0) // shoud this be greater than - equal or just greater
+			begin
+				count_x <= count_x + 1'b1;
+			end
+			
+			if ((count_y == (y_count - 1'b1)) & (count_x == (x_count - 1'b1)) 
+				& (y_count > 8'd0))
+			begin
+				count_y <= 8'd0;
+			end
+		end
+		X_r <= X + count_x;
+		Y_r <= Y + count_y;
+		// won't the above code keep redrawing the screen.. how do we get it to stop from 
+		// redrawing.. was this accounted for in lab7part2
+		// to fix the above thing we could have a counter that counts till 19200, and then
+		// sets the draw signal to 0 so that the drawing stops, i think i will need a 
+		// state to represent the drawing having stopped..
+	end
+endmodule
+
+module clk_counter(clk, resetn, max_count, enable, count);
+
+	input clk, resetn, enable;
+	input [14:0] max_count;
+	output reg [14:0] count;
+	
+	always@(posedge clk)
+		begin
+			if(resetn)
+				count <= 15'b0;
+			else if(enable)
+				count <= count + 1'b1;
+			else if(count == max_count)
+				count <= 15'b0;
+		end
+endmodule
+
+module address_counter_DK(clk, resetn, enable, address_DK);
+
+	input clk, resetn, enable;
+	output reg [7:0] address_DK;
+	
+	always@(posedge clk)
+	begin
+		if (resetn)
+			address_DK <= 8'b0;
+		else if(enable)
+			address_DK <= address_DK + 1'b1;
+		else if (address_DK == 8'd225)
+			address_DK <= 8'd0;
+	end
+	
+endmodule
+			
+
