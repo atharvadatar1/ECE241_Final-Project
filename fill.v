@@ -5,6 +5,9 @@ module fill
 		CLOCK_50,						//	On Board 50 MHz
 		SW,
 		KEY,							// On Board Keys
+		LEDR,
+		HEX0,
+		HEX1,
 		// The ports below are for the VGA output.  Do not change.
 		VGA_CLK,   						//	VGA Clock
 		VGA_HS,							//	VGA H_SYNC
@@ -19,6 +22,8 @@ module fill
 	input			CLOCK_50;				//	50 MHz
 	input	[3:0]	KEY;					
 	input [9:0] SW;
+	output [9:0] LEDR;
+	output[6:0] HEX0, HEX1;
 	// Do not change the following outputs
 	output			VGA_CLK;   				//	VGA Clock
 	output			VGA_HS;					//	VGA H_SYNC
@@ -45,6 +50,7 @@ module fill
 	
 	assign x = wire1 - 8'd1;
 
+	wire GameOver;
 	// Create an Instance of a VGA controller - there can be only one!
 	// Define the number of colours as well as the initial background
 	// image file (.MIF) for the controller.
@@ -72,13 +78,18 @@ module fill
 	// Outputs x,y,colour and writeEn for the VGA controller
 	
 		screenState s1(.clk(CLOCK_50), .gs(SW[9]), .go(SW[8]), .X(wire1), .Y(y), .C(colour), 
-							.writeEn(writeEn), .userInput(userIn), 
+							.writeEn(writeEn), .userInput(userIn), .gameOver(GameOver),
 							.MarX(marioX), .MarY(marioY), .BarX(barrelX), .BarY(barrelY));
 							
 		Animation s2(.ResetN(SW[8]), .K(KEY[3:1]), .CLOCK(CLOCK_50), 
 							.vgaX(marioX), .vgaY(marioY));
 							
-		AnimationB s3(.ResetN(SW[8]), .CLOCK(CLOCK_50), .vgaX(barrelX), .vgaY(barrelY));
+		BarrelAnimation s3(.ResetN(SW[8]), .CLOCK(CLOCK_50), .vgaX(barrelX), .vgaY(barrelY));
+
+		FinalGameLogic s4(.ResetN(SW[8]), .Clk(CLOCK_50), .currentX(marioX), .currentY(marioY),
+									.barrelX(barrelX), .barrelY(barrelY), .LED1(LEDR[0]), .LED2(LEDR[1]),
+									.LED3(LEDR[2]), .LED4(LEDR[9]), .HEX0(HEX0), .HEX1(HEX1), .gameOver(GameOver));
+		
 
 //		screenState(.clk(CLOCK_50), .gameStart(SW[9]), .X(x), .Y(y), .C(colour), 
 //							.WriteEn(writeEn), .countReset(~KEY[0]));
