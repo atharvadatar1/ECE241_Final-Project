@@ -24,12 +24,12 @@ output [6:0] Y;
 output [2:0] C;
 output writeEn;
 
-wire 	[2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6;
+wire 	[2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6, RAMtoOutput7;
 wire [7:0] Yout, max_x, max_y;
 wire [14:0]counterSS3; 
 wire [6:0] counterSS5;
 wire [4:0] counterSS6;
-wire sEn, mEn, bEn, rstInCounter;
+wire sEn, mEn, bEn, rstInCounter, gW;
 wire [3:0] plot_sig;
 
 assign Y = Yout[6:0];
@@ -71,6 +71,13 @@ assign Y = Yout[6:0];
 										.wren(1'b0),
 										.q(RAMtoOutput6)
 										);
+										
+	ram19200x3_game_win g7(	.address(counterSS3),
+									.clock(clk),
+									.data(3'b0),
+									.wren(1'b0),
+									.q(RAMtoOutput7)
+									);
 					
 	control ss1(.clk(clk),
 					.gS(gs),
@@ -87,7 +94,8 @@ assign Y = Yout[6:0];
 					.plot(plot_sig),
 					.writeEn(writeEn),
 					.go(go),
-					.gameOver(gameOver)
+					.gameOver(gameOver),
+					.gameWon(gW)
 					);
 					
 	datapath ss2(.RAMtoOutput1(RAMtoOutput1),			// comes from the ram19200x3
@@ -95,6 +103,7 @@ assign Y = Yout[6:0];
 					.RAMtoOutput4(RAMtoOutput4),			// comes from ram81x3_mario
 					.RAMtoOutput5(RAMtoOutput5),
 					.RAMtoOutput6(RAMtoOutput6),
+					.RAMtoOutput7(RAMtoOutput7),
 					.resetInnerCounter(rstInCounter),						// this comes from the control path
 					.X_r(X),
 					.Y_r(Yout),
@@ -106,7 +115,8 @@ assign Y = Yout[6:0];
 					.marioX(MarX),
 					.marioY(MarY),
 					.barrelX(BarX),
-					.barrelY(BarY)
+					.barrelY(BarY),
+					.gameWon(gW)
 					);
 				
 	Screen_counter ss3(	.clk(clk),
@@ -145,11 +155,12 @@ module control(gS,						// SW[9]
 					plot,
 					writeEn,
 					go,
-					gameOver
+					gameOver,
+					gameWon
 					);
 
 
-input clk, gS, userInput, go, gameOver;
+input clk, gS, userInput, go, gameOver, gameWon;
 input [14:0] screen_count;
 input [6:0] mario_count;
 input [4:0] barrel_count;
@@ -177,7 +188,9 @@ reg [4:0] current_state, next_state;
 					NXT_DRW_BAR				= 5'd13,
 					GAME_OVER_WAIT			= 5'd14,
 					GAME_OVER				= 5'd15,
-					GAME_DONE				= 5'd16;
+					GAME_WON_WAIT 			= 5'd16,
+					GAME_WON					= 5'd17,
+					GAME_DONE				= 5'd18;
 
 // these parameters define the size of the pixels that need to be replaced in x and y
 	
@@ -300,6 +313,8 @@ reg [4:0] current_state, next_state;
 															next_state = NXT_GAME_S_WAIT;
 														else if(gameOver == 1'b1)
 															next_state = GAME_OVER_WAIT;
+														else if(gameWon == 1'b1)
+															next_state = GAME_WON_WAIT;
 														else
 															next_state = NXT_DRW_BAR;
 															
@@ -318,6 +333,21 @@ reg [4:0] current_state, next_state;
 														else 
 															next_state = GAME_OVER;
 													
+													end
+													
+				GAME_WON_WAIT:					begin
+				
+														next_state = GAME_WON;
+														
+													end
+												
+				GAME_WON:						begin
+			
+														if(screen_count > WINDOW_PIX)
+															next_state = GAME_DONE;
+														else
+															next_state = GAME_WON;
+															
 													end
 				
 				GAME_DONE:						begin
@@ -514,6 +544,28 @@ reg [4:0] current_state, next_state;
 														resetInnerCounter = 1'b0;
 													end
 				
+			GAME_WON_WAIT:						begin
+														x_count = 8'd0;
+														y_count = 8'd0;
+														plot = 4'd7;
+														Screen_enable = 1'b1;
+														Mario_enable = 1'b0;
+														Barrel_enable = 1'b0;
+														writeEn = 1'b0;
+														resetInnerCounter = 1'b1;
+													end
+													
+			GAME_WON:							begin 
+														x_count = WINDOW_SZ_X;
+														y_count = WINDOW_SZ_Y;
+														plot = 4'd7;
+														Screen_enable = 1'b1;
+														Mario_enable = 1'b0;
+														Barrel_enable = 1'b0;
+														writeEn = 1'b1;
+														resetInnerCounter = 1'b0;
+													end
+													
 			GAME_DONE:							begin
 														x_count = 8'd0;
 														y_count = 8'd0;
@@ -542,6 +594,7 @@ module datapath (	RAMtoOutput1,
 						RAMtoOutput4,
 						RAMtoOutput5,
 						RAMtoOutput6,
+						RAMtoOutput7,
 						resetInnerCounter,
 						X_r,
 						Y_r,
@@ -554,10 +607,10 @@ module datapath (	RAMtoOutput1,
 						marioY,
 						barrelX,
 						barrelY,
-						//gameWon
+						gameWon
 						);
 	
-	input [2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6;
+	input [2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6, RAMtoOutput7;
 	input resetInnerCounter, clk;
 	input [7:0] x_count, y_count;
 	input [3:0] plot;
@@ -570,7 +623,7 @@ module datapath (	RAMtoOutput1,
 	wire [7:0] BarY;
 	assign BarY = {1'b0, barrelY};
 	
-	//output reg gameWon;											// for the win screen
+	output reg gameWon;											// for the win screen
 	
 	output reg [7:0] X_r, Y_r;
 	output reg [2:0] C_r;
@@ -583,13 +636,13 @@ module datapath (	RAMtoOutput1,
 //	wire [14:0] VGAtoRAM1;
 //	assign VGAtoRAM1 = ordinateToAddress[14:0];
 
-	/*always@(posedge clK)												// for the win screen
+	always@(posedge clk)												// for the win screen
 		begin
 			if ((marioX == 8'd115)&(marioY <= 7'd5))
 				gameWon = 1'b1;
 			else 
 				gameWon = 1'b0;
-		end*/
+		end
 	
 	always@(posedge clk)
 		begin
@@ -656,6 +709,16 @@ module datapath (	RAMtoOutput1,
 					X <= 8'b0;
 					Y <= 8'b0;
 					C <= RAMtoOutput6;
+					X_r <= X;
+					Y_r <= Y;
+					C_r <= C;
+				end
+				
+				else if (plot == 4'd7)
+				begin
+					X <= 8'b0;
+					Y <= 8'b0;
+					C <= RAMtoOutput7;
 					X_r <= X;
 					Y_r <= Y;
 					C_r <= C;
