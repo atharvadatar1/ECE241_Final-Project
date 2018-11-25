@@ -23,8 +23,8 @@ module FinalGameLogic(
 
     wire [25:0] Qout; 
     wire enable;
-    EnableSignalGL ES1(.ResetN(ResetN), .Clk(CLOCK), .Q(Qout)); 
-    assign enable = (Qout == 26'd0) ? 1'b1 : 1'b0; // Currently, the animation is set to 16 Hz
+    EnableSignalGL ES1(.ResetN(ResetN), .Clk(Clk), .Q(Qout)); 
+    assign enable = (Qout == 26'd0) ? 1'b1 : 1'b0; // Currently, the check speed is set to 2 Hz
 
     wire cS, cL; 
     GameLogicFSM GFSM1(.currentLives(cLives), .currentX(currentX), .currentY(currentY), .barrelX(barrelX), .barrelY(barrelY), 
@@ -84,9 +84,9 @@ module EnableSignalGL(
     always @(posedge Clk) 
     begin
         if(!ResetN) 
-            Q <= 26'b00001011111010111100000111;
+            Q <= 26'b01011111010111100000111111;
         else if(Q == 0) 
-            Q <= 26'b00001011111010111100000111; // Animation speed is 16 Hz
+            Q <= 26'b01011111010111100000111111; // check speed is 2 Hz
         else 
             Q <= Q - 1'b1; 
     end
@@ -129,7 +129,7 @@ module GameLogicFSM(
     always @(*) 
     begin
         case(currentState)
-            S_CHECK: if((barrelX == currentX + 8'd9 || barrelX == currentX) && barrelY == currentY + 7'd4)
+            S_CHECK: if(barrelX <= currentX + 8'd9 && barrelX >= currentX && barrelY <= currentY + 7'd4 && barrelY >= currentY)
                         nextState = S_CHECK_LIVES; 
                      else
                         nextState = S_CHECK;  
