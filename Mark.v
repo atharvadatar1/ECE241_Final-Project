@@ -183,7 +183,8 @@ module ControlCommand(
                 else 
                     FinalD = 3'b000;
             S_WAIT: 
-                FinalD = 3'b000;              
+                FinalD = 3'b000;   
+            default: FinalD = 3'b000;            
         endcase
     end
     always @(posedge Clk) 
