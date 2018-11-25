@@ -787,7 +787,7 @@ module Screen_counter(clk, resetn, Screen_enable, screen_count);
 			end
 			
 			else if (Screen_enable) begin
-				screen_count <= screen_count + 1;
+				screen_count <= screen_count + 15'd1;
 			end
 			
 			else 
@@ -813,7 +813,7 @@ module Mario_counter(clk, resetn, Mario_enable, mario_count);
 		end
 		
 		else if (Mario_enable) begin
-			mario_count <= mario_count + 1;
+			mario_count <= mario_count + 7'd1;
 		end
 		
 		else 
