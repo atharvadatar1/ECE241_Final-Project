@@ -8,6 +8,10 @@ module fill
 		LEDR,
 		HEX0,
 		HEX1,
+		HEX4,
+		HEX5,
+		PS2_CLK,
+		PS2_DAT,
 		// The ports below are for the VGA output.  Do not change.
 		VGA_CLK,   						//	VGA Clock
 		VGA_HS,							//	VGA H_SYNC
@@ -20,10 +24,11 @@ module fill
 	);
 
 	input			CLOCK_50;				//	50 MHz
+	inout PS2_CLK, PS2_DAT;
 	input	[3:0]	KEY;					
 	input [9:0] SW;
 	output [9:0] LEDR;
-	output[6:0] HEX0, HEX1;
+	output[6:0] HEX0, HEX1, HEX4, HEX5;
 	// Do not change the following outputs
 	output			VGA_CLK;   				//	VGA Clock
 	output			VGA_HS;					//	VGA H_SYNC
@@ -47,6 +52,9 @@ module fill
 	wire [6:0] marioY, barrelY;
 	reg userIn;
 	wire [7:0] wire1;
+	reg [2:0] keys;
+	
+	wire [7:0] keyboardData;
 	
 	assign x = wire1 - 8'd1;
 
@@ -81,7 +89,7 @@ module fill
 							.writeEn(writeEn), .userInput(userIn), .gameOver(GameOver),
 							.MarX(marioX), .MarY(marioY), .BarX(barrelX), .BarY(barrelY));
 							
-		Animation s2(.ResetN(SW[8]), .K(KEY[3:1]), .CLOCK(CLOCK_50), 
+		Animation s2(.ResetN(SW[8]), .K(keys[2:0]), .CLOCK(CLOCK_50), 
 							.vgaX(marioX), .vgaY(marioY));
 							
 		BarrelAnimation s3(.ResetN(SW[8]), .CLOCK(CLOCK_50), .vgaX(barrelX), .vgaY(barrelY));
@@ -90,16 +98,51 @@ module fill
 									.barrelX(barrelX), .barrelY(barrelY), .LED1(LEDR[0]), .LED2(LEDR[1]),
 									.LED3(LEDR[2]), .LED4(LEDR[9]), .HEX0(HEX0), .HEX1(HEX1), .gameOver(GameOver));
 		
+		PS2_Demo s5(.CLOCK_50(CLOCK_50), .KEY(KEY[3:0]), .PS2_CLK(PS2_CLK), .PS2_DAT(PS2_DAT),
+						.HEX4(HEX4), .HEX5(HEX5), .last_data_received(keyboardData));
 
 //		screenState(.clk(CLOCK_50), .gameStart(SW[9]), .X(x), .Y(y), .C(colour), 
 //							.WriteEn(writeEn), .countReset(~KEY[0]));
 	
 	always@(posedge CLOCK_50)
 	begin
-		if((KEY[3] == 1'b0)|(KEY[2] == 1'b0)|(KEY[1] == 1'b0)) 
+		if((keys[2] == 1'b0)|(keys[1] == 1'b0)|(keys[0] == 1'b0)) 
 			userIn <= 1'b1;
 		else 
 			userIn <= 1'b0;
 	end
-
+	
+	always@(posedge CLOCK_50)
+	begin
+		if(keyboardData == 8'h00) begin
+			keys[0] <= 1'b1;
+			keys[1] <= 1'b1;
+			keys[2] <= 1'b1;
+		end
+		else if(keyboardData == 8'h75) begin
+			keys[0] <= 1'b0;
+			keys[1] <= 1'b1;
+			keys[2] <= 1'b1;
+		end
+		else if(keyboardData == 8'h72)begin
+			keys[0] <= 1'b1;
+			keys[1] <= 1'b0;
+			keys[2] <= 1'b0;
+		end
+		else if(keyboardData == 8'h6B)begin
+			keys[0] <= 1'b1;
+			keys[1] <= 1'b1;
+			keys[2] <= 1'b0;
+		end
+		else if(keyboardData == 8'h74)begin
+			keys[0] <= 1'b1;
+			keys[1] <= 1'b0;
+			keys[2] <= 1'b1;
+		end
+		else if(keyboardData == 8'h29)begin
+			keys[0] <= 1'b0;
+			keys[1] <= 1'b0;
+			keys[2] <= 1'b0;
+		end
+	end
 endmodule // fill
