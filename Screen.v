@@ -512,8 +512,8 @@ reg [4:0] current_state, next_state;
 													end
 													
 			NXT_DRW_BAR:						begin
-														x_count = MARIO_SZ;
-														y_count = MARIO_SZ;
+														x_count = BARREL_SZ;
+														y_count = BARREL_SZ;
 														plot = 4'd5;
 														Screen_enable = 1'b0;
 														Mario_enable = 1'b0;
