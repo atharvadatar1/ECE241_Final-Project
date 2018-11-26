@@ -12,7 +12,8 @@ module screenState(	clk,
 							MarY,
 							BarX,
 							BarY,
-							gameOver
+							gameOver,
+							//GameWON
 							);
 	
 	input clk, gs, userInput, go, gameOver;
@@ -23,8 +24,9 @@ module screenState(	clk,
 	output [6:0] Y;
 	output [2:0] C;
 	output writeEn;
+	//output GameWON;
 
-	wire 	[2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6, RAMtoOutput7, RAMtoOutput8;
+	wire 	[2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6, RAMtoOutput7, RAMtoOutput8, RAMtoOutput9;
 	wire [7:0] Yout, max_x, max_y;
 	wire [14:0]counterSS3; 
 	wire [6:0] counterSS5;
@@ -33,15 +35,7 @@ module screenState(	clk,
 	wire [3:0] plot_sig;
 
 	assign Y = Yout[6:0];
-	
-	/*reg [7:0] XforPlot;
-	reg [6:0] YforPlot;
-	
-	always@(posedge clk)
-	begin
-		XforPlot <= X;
-		YforPlot <= Y;
-	end*/
+	//assign GameWON = gW;
 
 	wire [15:0] ordinateToAddress = ({1'b0, Y, 7'd0} + {1'b0, Y, 5'd0} + {1'b0, X});
 	wire [14:0] VGAtoRAM1= ordinateToAddress[14:0];
@@ -60,6 +54,13 @@ module screenState(	clk,
 												.data(3'b0), 
 												.wren(1'b0), 
 												.q(RAMtoOutput2)
+												);
+												
+	ram19200x3_game_screen_play g9(  .address(counterSS3),
+												.clock(clk),
+												.data(3'b0),
+												.wren(1'b0),
+												.q(RAMtoOutput9)
 												);
 	
 	// contains the Mario sprite image
@@ -125,6 +126,7 @@ module screenState(	clk,
 					.RAMtoOutput6(RAMtoOutput6),
 					.RAMtoOutput7(RAMtoOutput7),
 					.RAMtoOutput8(RAMtoOutput8),
+					.RAMtoOutput9(RAMtoOutput9),
 					.resetInnerCounter(rstInCounter),						// this comes from the control path
 					.X_r(X),
 					.Y_r(Yout),
@@ -507,7 +509,7 @@ reg [4:0] current_state, next_state;
 			NXT_GAME_S_WAIT:					begin
 														x_count = 8'd0;
 														y_count = 8'd0;
-														plot = 4'd2;
+														plot = 4'd9;
 														Screen_enable = 1'b1;
 														Mario_enable = 1'b0;
 														Barrel_enable = 1'b0;
@@ -519,7 +521,7 @@ reg [4:0] current_state, next_state;
 			NXT_GAME_S_DRAW:					begin
 														x_count = WINDOW_SZ_X;
 														y_count = WINDOW_SZ_Y;
-														plot = 4'd2;
+														plot = 4'd9;
 														Screen_enable = 1'b1;
 														Mario_enable = 1'b0;
 														Barrel_enable = 1'b0;
@@ -679,6 +681,7 @@ module datapath (	RAMtoOutput1,
 						RAMtoOutput6,
 						RAMtoOutput7,
 						RAMtoOutput8,
+						RAMtoOutput9,
 						resetInnerCounter,
 						X_r,
 						Y_r,
@@ -694,7 +697,7 @@ module datapath (	RAMtoOutput1,
 						gameWon
 						);
 	
-	input [2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6, RAMtoOutput7, RAMtoOutput8;
+	input [2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6, RAMtoOutput7, RAMtoOutput8, RAMtoOutput9;
 	input resetInnerCounter, clk;
 	input [7:0] x_count, y_count;
 	input [3:0] plot;
@@ -807,12 +810,21 @@ module datapath (	RAMtoOutput1,
 				begin
 					X <= 8'b0;
 					Y <= 8'b0;
-					C <= RAMtoOutput8;
+					C_r <= RAMtoOutput8;
+					X_r <= X;
+					Y_r <= Y;
+					//C_r <= C;
+				end
+				
+				else if (plot == 4'd9)
+				begin
+					X <= 8'b0;
+					Y <= 8'b0;
+					C <= RAMtoOutput9;
 					X_r <= X;
 					Y_r <= Y;
 					C_r <= C;
 				end
-				
 			end
 			
 			if (resetInnerCounter == 1'b0)
