@@ -15,24 +15,36 @@ module screenState(	clk,
 							gameOver
 							);
 	
-input clk, gs, userInput, go, gameOver;
-input [7:0] MarX, BarX;
-input [6:0] MarY, BarY;
+	input clk, gs, userInput, go, gameOver;
+	input [7:0] MarX, BarX;
+	input [6:0] MarY, BarY;
 
-output [7:0] X;
-output [6:0] Y;
-output [2:0] C;
-output writeEn;
+	output [7:0] X;
+	output [6:0] Y;
+	output [2:0] C;
+	output writeEn;
 
-wire 	[2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6, RAMtoOutput7;
-wire [7:0] Yout, max_x, max_y;
-wire [14:0]counterSS3; 
-wire [6:0] counterSS5;
-wire [4:0] counterSS6;
-wire sEn, mEn, bEn, rstInCounter, gW;
-wire [3:0] plot_sig;
+	wire 	[2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6, RAMtoOutput7, RAMtoOutput8;
+	wire [7:0] Yout, max_x, max_y;
+	wire [14:0]counterSS3; 
+	wire [6:0] counterSS5;
+	wire [4:0] counterSS6;
+	wire sEn, mEn, bEn, rstInCounter, gW, RWE;
+	wire [3:0] plot_sig;
 
-assign Y = Yout[6:0];
+	assign Y = Yout[6:0];
+	
+	/*reg [7:0] XforPlot;
+	reg [6:0] YforPlot;
+	
+	always@(posedge clk)
+	begin
+		XforPlot <= X;
+		YforPlot <= Y;
+	end*/
+
+	wire [15:0] ordinateToAddress = ({1'b0, Y, 7'd0} + {1'b0, Y, 5'd0} + {1'b0, X});
+	wire [14:0] VGAtoRAM1= ordinateToAddress[14:0];
 
 	// contains the start screen image
 	ram19200x3 g1(	.address(counterSS3), 					// from screen_counter
@@ -78,6 +90,13 @@ assign Y = Yout[6:0];
 									.wren(1'b0),
 									.q(RAMtoOutput7)
 									);
+									
+	ram19200x3_variable_screen g8(.address(VGAtoRAM1),
+											.clock(clk),
+											.data(C),
+											.wren(RWE),
+											.q(RAMtoOutput8)
+											);
 					
 	control ss1(.clk(clk),
 					.gS(gs),
@@ -95,7 +114,8 @@ assign Y = Yout[6:0];
 					.writeEn(writeEn),
 					.go(go),
 					.gameOver(gameOver),
-					.gameWon(gW)
+					.gameWon(gW),
+					.ramWren(RWE)
 					);
 					
 	datapath ss2(.RAMtoOutput1(RAMtoOutput1),			// comes from the ram19200x3
@@ -104,6 +124,7 @@ assign Y = Yout[6:0];
 					.RAMtoOutput5(RAMtoOutput5),
 					.RAMtoOutput6(RAMtoOutput6),
 					.RAMtoOutput7(RAMtoOutput7),
+					.RAMtoOutput8(RAMtoOutput8),
 					.resetInnerCounter(rstInCounter),						// this comes from the control path
 					.X_r(X),
 					.Y_r(Yout),
@@ -156,7 +177,8 @@ module control(gS,						// SW[9]
 					writeEn,
 					go,
 					gameOver,
-					gameWon
+					gameWon,
+					ramWren
 					);
 
 
@@ -165,7 +187,7 @@ input [14:0] screen_count;
 input [6:0] mario_count;
 input [4:0] barrel_count;
 
-output reg Screen_enable, Mario_enable, Barrel_enable, writeEn, resetInnerCounter;
+output reg Screen_enable, Mario_enable, Barrel_enable, writeEn, resetInnerCounter, ramWren;
 output reg [7:0] x_count, y_count;
 output reg [3:0] plot;
 
@@ -186,11 +208,13 @@ reg [4:0] current_state, next_state;
 					NXT_DRW_MAR				= 5'd11,
 					NXT_DRW_BAR_WAIT		= 5'd12,
 					NXT_DRW_BAR				= 5'd13,
-					GAME_OVER_WAIT			= 5'd14,
-					GAME_OVER				= 5'd15,
-					GAME_WON_WAIT 			= 5'd16,
-					GAME_WON					= 5'd17,
-					GAME_DONE				= 5'd18;
+					PLOT_SCREEN_WAIT		= 5'd14,
+					PLOT_SCREEN				= 5'd15,
+					GAME_OVER_WAIT			= 5'd16,
+					GAME_OVER				= 5'd17,
+					GAME_WON_WAIT 			= 5'd18,
+					GAME_WON					= 5'd19,
+					GAME_DONE				= 5'd20;
 
 // these parameters define the size of the pixels that need to be replaced in x and y
 	
@@ -310,14 +334,29 @@ reg [4:0] current_state, next_state;
 				NXT_DRW_BAR:					begin
 				
 														if (barrel_count > BARREL_PIX)
+															next_state = PLOT_SCREEN_WAIT;
+														else
+															next_state = NXT_DRW_BAR;
+															
+													end
+													
+				PLOT_SCREEN_WAIT:				begin
+								
+														next_state = PLOT_SCREEN;
+														
+													end
+													
+				PLOT_SCREEN:					begin
+			
+														if (screen_count > WINDOW_PIX)
 															next_state = NXT_GAME_S_WAIT;
 														else if(gameOver == 1'b1)
 															next_state = GAME_OVER_WAIT;
 														else if(gameWon == 1'b1)
 															next_state = GAME_WON_WAIT;
 														else
-															next_state = NXT_DRW_BAR;
-															
+															next_state = PLOT_SCREEN;
+														
 													end
 				
 				GAME_OVER_WAIT:				begin
@@ -372,6 +411,7 @@ reg [4:0] current_state, next_state;
 		Barrel_enable = 1'b0;
 		writeEn = 1'b0;
 		resetInnerCounter = 1'b0;
+		ramWren = 1'b0;
 		
 		case(current_state)
 		
@@ -383,6 +423,7 @@ reg [4:0] current_state, next_state;
 														Mario_enable = 1'b0;
 														writeEn = 1'b0;
 														resetInnerCounter = 1'b1;
+														ramWren = 1'b0;
 													end
 													
 			START_SCREEN: 						begin
@@ -393,16 +434,18 @@ reg [4:0] current_state, next_state;
 														Mario_enable = 1'b0;
 														writeEn = 1'b1;
 														resetInnerCounter = 1'b0;
+														ramWren = 1'b0;
 													end
 													
 			START_SCREEN_DONE:				begin
 														x_count = 8'd0;
-															y_count = 8'd0;
+														y_count = 8'd0;
 														plot = 4'd0;
 														Screen_enable = 1'b0;
 														Mario_enable = 1'b0;
 														writeEn = 1'b0;
 														resetInnerCounter = 1'b1;
+														ramWren = 1'b0;
 													end	
 				
 													
@@ -414,6 +457,7 @@ reg [4:0] current_state, next_state;
 														Mario_enable = 1'b0;
 														writeEn = 1'b0;
 														resetInnerCounter = 1'b1;
+														ramWren = 1'b0;
 													end
 													
 			GAME_SCREEN_DRAW:		 			begin
@@ -424,6 +468,7 @@ reg [4:0] current_state, next_state;
 														Mario_enable = 1'b0;
 														writeEn = 1'b1;
 														resetInnerCounter = 1'b0;
+														ramWren = 1'b0;
 													end
 													
 			DRAW_MARIO_WAIT:					begin
@@ -434,6 +479,7 @@ reg [4:0] current_state, next_state;
 														Mario_enable = 1'b1;
 														writeEn = 1'b0;
 														resetInnerCounter = 1'b1;
+														ramWren = 1'b0;
 													end
 				
 			DRAW_MARIO: 						begin
@@ -444,6 +490,7 @@ reg [4:0] current_state, next_state;
 														Mario_enable = 1'b1;
 														writeEn = 1'b1;
 														resetInnerCounter = 1'b0;
+														ramWren = 1'b0;
 													end
 				
 			userInput_WAIT:					begin
@@ -454,6 +501,7 @@ reg [4:0] current_state, next_state;
 														Mario_enable = 1'b0;
 														writeEn = 1'b0;
 														resetInnerCounter = 1'b1;
+														ramWren = 1'b0;
 													end	
 													
 			NXT_GAME_S_WAIT:					begin
@@ -465,6 +513,7 @@ reg [4:0] current_state, next_state;
 														Barrel_enable = 1'b0;
 														writeEn = 1'b0;
 														resetInnerCounter = 1'b1;
+														ramWren = 1'b1;
 													end
 													
 			NXT_GAME_S_DRAW:					begin
@@ -474,8 +523,9 @@ reg [4:0] current_state, next_state;
 														Screen_enable = 1'b1;
 														Mario_enable = 1'b0;
 														Barrel_enable = 1'b0;
-														writeEn = 1'b1;
+														writeEn = 1'b0;
 														resetInnerCounter = 1'b0;
+														ramWren = 1'b1;
 													end
 													
 			NXT_DRW_MAR_WAIT:					begin
@@ -487,6 +537,7 @@ reg [4:0] current_state, next_state;
 														Barrel_enable = 1'b0;
 														writeEn = 1'b0;
 														resetInnerCounter = 1'b1;
+														ramWren = 1'b1;
 													end
 													
 			NXT_DRW_MAR:							begin
@@ -496,8 +547,9 @@ reg [4:0] current_state, next_state;
 														Screen_enable = 1'b0;
 														Mario_enable = 1'b1;
 														Barrel_enable = 1'b0;
-														writeEn = 1'b1;
+														writeEn = 1'b0;
 														resetInnerCounter = 1'b0;
+														ramWren = 1'b1;
 													end
 													
 			NXT_DRW_BAR_WAIT:					begin
@@ -509,6 +561,7 @@ reg [4:0] current_state, next_state;
 														Barrel_enable = 1'b1;
 														writeEn = 1'b0;
 														resetInnerCounter = 1'b1;
+														ramWren = 1'b1;
 													end
 													
 			NXT_DRW_BAR:						begin
@@ -518,8 +571,33 @@ reg [4:0] current_state, next_state;
 														Screen_enable = 1'b0;
 														Mario_enable = 1'b0;
 														Barrel_enable = 1'b1;
+														writeEn = 1'b0;
+														resetInnerCounter = 1'b0;
+														ramWren = 1'b1;
+													end
+													
+			PLOT_SCREEN_WAIT:					begin
+														x_count = 8'd0;
+														y_count = 8'd0;
+														plot = 4'd8;
+														Screen_enable = 1'b1;
+														Mario_enable = 1'b0;
+														Barrel_enable = 1'b0;
+														writeEn = 1'b0;
+														resetInnerCounter = 1'b1;
+														ramWren = 1'b0;
+													end
+													
+			PLOT_SCREEN:						begin
+														x_count = WINDOW_SZ_X;
+														y_count = WINDOW_SZ_Y;
+														plot = 4'd8;
+														Screen_enable = 1'b1;
+														Mario_enable = 1'b0;
+														Barrel_enable = 1'b0;
 														writeEn = 1'b1;
 														resetInnerCounter = 1'b0;
+														ramWren = 1'b0;
 													end
 													
 			GAME_OVER_WAIT:					begin
@@ -531,6 +609,7 @@ reg [4:0] current_state, next_state;
 														Barrel_enable = 1'b0;
 														writeEn = 1'b0;
 														resetInnerCounter = 1'b1;
+														ramWren = 1'b0;
 													end
 													
 			GAME_OVER:							begin 
@@ -542,6 +621,7 @@ reg [4:0] current_state, next_state;
 														Barrel_enable = 1'b0;
 														writeEn = 1'b1;
 														resetInnerCounter = 1'b0;
+														ramWren = 1'b0;
 													end
 				
 			GAME_WON_WAIT:						begin
@@ -553,6 +633,7 @@ reg [4:0] current_state, next_state;
 														Barrel_enable = 1'b0;
 														writeEn = 1'b0;
 														resetInnerCounter = 1'b1;
+														ramWren = 1'b0;
 													end
 													
 			GAME_WON:							begin 
@@ -564,6 +645,7 @@ reg [4:0] current_state, next_state;
 														Barrel_enable = 1'b0;
 														writeEn = 1'b1;
 														resetInnerCounter = 1'b0;
+														ramWren = 1'b0;
 													end
 													
 			GAME_DONE:							begin
@@ -574,7 +656,8 @@ reg [4:0] current_state, next_state;
 														Mario_enable = 1'b0;
 														Barrel_enable = 1'b0;
 														writeEn = 1'b0;
-														resetInnerCounter = 1'b1;	
+														resetInnerCounter = 1'b1;
+														ramWren = 1'b0;	
 													end
 		endcase
 	end
@@ -595,6 +678,7 @@ module datapath (	RAMtoOutput1,
 						RAMtoOutput5,
 						RAMtoOutput6,
 						RAMtoOutput7,
+						RAMtoOutput8,
 						resetInnerCounter,
 						X_r,
 						Y_r,
@@ -610,7 +694,7 @@ module datapath (	RAMtoOutput1,
 						gameWon
 						);
 	
-	input [2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6, RAMtoOutput7;
+	input [2:0] RAMtoOutput1, RAMtoOutput2, RAMtoOutput4, RAMtoOutput5, RAMtoOutput6, RAMtoOutput7, RAMtoOutput8;
 	input resetInnerCounter, clk;
 	input [7:0] x_count, y_count;
 	input [3:0] plot;
@@ -630,11 +714,6 @@ module datapath (	RAMtoOutput1,
 	
 	reg [7:0] X, Y, X_mar, Y_mar, X_bar, Y_bar, count_x, count_y;
 	reg [2:0] C, C_mar, C_bar;
-	
-//	wire [15:0] ordinateToAddress;
-//	assign ordinateToAddress = ({1'b0, Y_r[6:0], 7'd0} + {1'b0, Y_r[6:0], 5'd0} + {1'b0, X_r});
-//	wire [14:0] VGAtoRAM1;
-//	assign VGAtoRAM1 = ordinateToAddress[14:0];
 
 	always@(posedge clk)												// for the win screen
 		begin
@@ -653,7 +732,7 @@ module datapath (	RAMtoOutput1,
 				C_r <= 3'b0;
 				X <= 8'b0;
 				Y <= 8'b0;
-				C <= 8'b0;
+				C <= 3'b0;
 				X_mar <= 8'b0;
 				Y_mar <= 8'b0;
 				C_mar <= 3'b0;
@@ -723,6 +802,17 @@ module datapath (	RAMtoOutput1,
 					Y_r <= Y;
 					C_r <= C;
 				end
+				
+				else if (plot == 4'd8)
+				begin
+					X <= 8'b0;
+					Y <= 8'b0;
+					C <= RAMtoOutput8;
+					X_r <= X;
+					Y_r <= Y;
+					C_r <= C;
+				end
+				
 			end
 			
 			if (resetInnerCounter == 1'b0)
@@ -787,7 +877,7 @@ module Screen_counter(clk, resetn, Screen_enable, screen_count);
 			end
 			
 			else if (Screen_enable) begin
-				screen_count <= screen_count + 1;
+				screen_count <= screen_count + 15'd1;
 			end
 			
 			else 
@@ -813,7 +903,7 @@ module Mario_counter(clk, resetn, Mario_enable, mario_count);
 		end
 		
 		else if (Mario_enable) begin
-			mario_count <= mario_count + 1;
+			mario_count <= mario_count + 7'd1;
 		end
 		
 		else 
